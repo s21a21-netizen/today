@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今日何曜日だっけ？ - Dynamic Cinematic Motion Graphics</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            bg: '#05050A',
+                            surface: '#0E0E1A',
+                            cyan: '#00F0FF',
+                            pink: '#FF007F',
+                            gold: '#FFD700',
+                            purple: '#9D00FF'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Courier New', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@300;400;700;900&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #05050A;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        .font-cinzel { font-family: 'Cinzel', serif; }
+        
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 0, 0, 0.3) 50%,
+                rgba(0, 0, 0, 0.3)
+            );
+            background-size: 100% 4px;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-2px, 2px) }
+            40% { transform: translate(-2px, -2px) }
+            60% { transform: translate(2px, 2px) }
+            80% { transform: translate(2px, -2px) }
+            100% { transform: translate(0) }
+        }
+        .animate-glitch {
+            animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) infinite both;
+        }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 4s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen flex flex-col items-center justify-center">
+
+    <canvas id="bgCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+    
+    <!-- CRT Scanlines Effect -->
+    <div class="absolute inset-0 scanlines pointer-events-none z-10 opacity-60"></div>
+
+    <!-- Start Overlay with Day Selector -->
+    <div id="startOverlay" class="absolute inset-0 bg-cyber-bg/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-6 text-center transition-opacity duration-700">
+        <div class="relative mb-6">
+            <div id="glowOrb" class="absolute -inset-1 rounded-full bg-gradient-to-r from-cyber-cyan via-cyber-purple to-cyber-pink blur-lg opacity-70 animate-pulse"></div>
+            <div class="relative w-20 h-20 rounded-full bg-cyber-surface border border-cyber-cyan/50 flex items-center justify-center">
+                <svg class="w-8 h-8 text-cyber-cyan ml-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            </div>
+        </div>
+        <h1 class="font-orbitron text-2xl md:text-4xl font-black tracking-widest text-white mb-2" id="mainTitleText">
+            今日何曜日だっけ？
+        </h1>
+        <p class="text-gray-400 font-mono text-xs md:text-sm max-w-md mb-6">
+            曜日ごとに変わるテーマカラーとシンセサイザーBGMによる30秒のシネマティックモーショングラフィックス
+        </p>
+
+        <!-- Day Selector Controller -->
+        <div class="mb-6 flex flex-col items-center">
+            <label class="text-xs font-mono text-gray-400 mb-2">曜日シミュレーション / プレビュー切替:</label>
+            <div id="daySelectorBtns" class="flex flex-wrap gap-2 justify-center max-w-xl">
+                <!-- Dynamically populated or static buttons -->
+            </div>
+        </div>
+
+        <button id="startBtn" class="group relative px-8 py-3 bg-transparent overflow-hidden rounded-xl font-orbitron font-bold text-cyber-cyan border border-cyber-cyan/60 transition-all duration-300 hover:bg-cyber-cyan hover:text-black hover:shadow-[0_0_30px_rgba(0,240,255,0.6)] cursor-pointer">
+            <span class="relative z-10 tracking-widest text-base">START EXPERIENCE (再生)</span>
+        </button>
+        <div class="mt-4 text-xs text-gray-500 font-mono" id="detectedDayInfo">自動検出中...</div>
+    </div>
+
+    <!-- Main Motion Graphics Container -->
+    <div id="mainContainer" class="relative z-20 w-full max-w-5xl h-[85vh] flex flex-col items-center justify-between p-6 opacity-0 transition-opacity duration-1000 pointer-events-none">
+        
+        <!-- Top Status Bar -->
+        <div class="w-full flex justify-between items-center font-mono text-xs md:text-sm text-cyber-cyan/85 tracking-widest border-b border-cyber-cyan/20 pb-4" id="statusBar">
+            <div class="flex items-center gap-2">
+                <span id="statusDot" class="inline-block w-2.5 h-2.5 rounded-full bg-cyber-cyan animate-ping"></span>
+                <span id="systemStatus">SYS.ONLINE // DYNAMIC THEME</span>
+            </div>
+            <div id="timeCounter" class="text-cyber-gold font-orbitron text-lg font-bold">00:00 / 00:30</div>
+            <div class="flex items-center gap-3">
+                <button id="replayBtn" class="hidden px-3 py-1 bg-cyber-cyan/20 border border-cyber-cyan/60 rounded text-cyber-cyan hover:bg-cyber-cyan hover:text-black transition-all cursor-pointer pointer-events-auto">REPLAY</button>
+                <button id="backToMenuBtn" class="px-3 py-1 bg-gray-800/60 border border-gray-600 rounded text-gray-300 hover:bg-gray-700 transition-all cursor-pointer pointer-events-auto">MENU</button>
+                <span id="audioStatus">AUDIO: ACTIVE</span>
+            </div>
+        </div>
+
+        <!-- Center Stage / Motion Graphics Display -->
+        <div class="relative w-full flex-1 flex flex-col items-center justify-center text-center my-auto overflow-hidden">
+            
+            <!-- Scene 1: Awakening / Date Setup -->
+            <div id="scene1" class="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-all duration-700 transform scale-95">
+                <div id="scene1Sub" class="text-xs md:text-sm uppercase tracking-[0.5em] text-cyber-pink font-mono mb-3">Temporal Coordinates</div>
+                <div id="dateText" class="font-cinzel text-3xl md:text-6xl font-bold tracking-widest text-white">
+                    OCTOBER 2, 2026
+                </div>
+                <div id="scene1Bar" class="w-32 h-[2px] bg-gradient-to-r from-transparent via-cyber-cyan to-transparent mt-6"></div>
+            </div>
+
+            <!-- Scene 2: Question & Scan -->
+            <div id="scene2" class="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-all duration-700 transform scale-95">
+                <div class="font-orbitron text-xl md:text-3xl text-gray-300 tracking-wider mb-2">QUERIED TIMELINE:</div>
+                <div id="scene2Title" class="font-orbitron text-4xl md:text-7xl font-black text-cyber-gold tracking-widest animate-pulse-slow">
+                    WHAT DAY IS TODAY?
+                </div>
+                <div id="scene2Sub" class="mt-4 font-mono text-sm text-cyber-cyan animate-glitch">CALCULATING VECTOR...</div>
+            </div>
+
+            <!-- Scene 3: Grand Reveal - DAY -->
+            <div id="scene3" class="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-all duration-700 transform scale-90">
+                <div id="revealSubtitle" class="text-xs md:text-sm font-mono tracking-[0.6em] text-cyber-cyan mb-2 uppercase">Target Identified</div>
+                <h2 id="dayEnText" class="font-orbitron text-6xl md:text-9xl font-black tracking-widest text-white uppercase scale-110">
+                    FRIDAY
+                </h2>
+                <div id="dayJpText" class="font-cinzel text-2xl md:text-4xl text-cyber-gold tracking-[0.3em] mt-3">
+                    金曜日
+                </div>
+                <div id="dayBadgeContainer" class="flex gap-4 mt-6">
+                    <span id="dayBadge1" class="px-4 py-1.5 rounded-full border border-cyber-cyan/40 bg-cyber-cyan/10 font-mono text-xs text-cyber-cyan tracking-wider">WEEKEND APPROACHING</span>
+                    <span id="dayBadge2" class="px-4 py-1.5 rounded-full border border-cyber-gold/40 bg-cyber-gold/10 font-mono text-xs text-cyber-gold tracking-wider">STATUS: PRIME</span>
+                </div>
+            </div>
+
+            <!-- Scene 4: Outro / Summary -->
+            <div id="scene4" class="absolute inset-0 flex flex-col items-center justify-center opacity-0 transition-all duration-700 transform scale-95">
+                <div id="outroTitle" class="font-orbitron text-3xl md:text-6xl font-black text-white tracking-widest mb-4">
+                    HAPPY FRIDAY
+                </div>
+                <p id="outroDesc" class="font-mono text-sm md:text-base text-gray-400 max-w-lg">
+                    今日も素晴らしい一日になりますように。素晴らしい週末をお迎えください。
+                </p>
+                <div id="outroFooter" class="mt-8 font-orbitron text-xs text-cyber-gold tracking-widest">
+                    SESSION COMPLETED // 2026.10.02
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Timeline & Progress Bar -->
+        <div class="w-full flex flex-col gap-2 border-t border-cyber-cyan/20 pt-4">
+            <div class="flex justify-between text-xs font-mono text-gray-400">
+                <span id="progressLabel">TIMELINE PROGRESS</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="w-full h-1.5 bg-cyber-surface rounded-full overflow-hidden border border-cyber-cyan/30">
+                <div id="progressBar" class="h-full bg-gradient-to-r from-cyber-cyan via-cyber-purple to-cyber-pink w-0 transition-all duration-100"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const DAY_THEMES = [
+            {
+                index: 0,
+                en: "SUNDAY",
+                jp: "日曜日",
+                short: "SUN",
+                primaryColor: "#FF4500", // Orange-Red
+                secondaryColor: "#FFD700", // Gold
+                accentColor: "#FF69B4", // Pink
+                badge1: "REST & RECHARGE",
+                badge2: "STATUS: TRANQUIL",
+                outroTitle: "REFRESHING SUNDAY",
+                outroDesc: "心身をリフレッシュし、新たな活力で明日への準備を。",
+                synthPreset: "chill"
+            },
+            {
+                index: 1,
+                en: "MONDAY",
+                jp: "月曜日",
+                short: "MON",
+                primaryColor: "#00F0FF", // Cyan
+                secondaryColor: "#0070FF", // Blue
+                accentColor: "#9D00FF", // Purple
+                badge1: "NEW CYCLE START",
+                badge2: "STATUS: AWAKENING",
+                outroTitle: "POWERFUL MONDAY",
+                outroDesc: "一週間の始まり。新しい目標へ向かってエンジン全開で進もう。",
+                synthPreset: "energetic"
+            },
+            {
+                index: 2,
+                en: "TUESDAY",
+                jp: "火曜日",
+                short: "TUE",
+                primaryColor: "#FF0055", // Hot Red/Pink
+                secondaryColor: "#FF8800", // Orange
+                accentColor: "#FF00FF", // Magenta
+                badge1: "MOMENTUM BUILDING",
+                badge2: "STATUS: ACTIVE",
+                outroTitle: "STEADY TUESDAY",
+                outroDesc: "勢いを加速させ、確実にタスクを遂行していく一日。",
+                synthPreset: "punchy"
+            },
+            {
+                index: 3,
+                en: "WEDNESDAY",
+                jp: "水曜日",
+                short: "WED",
+                primaryColor: "#00FF66", // Neon Green
+                secondaryColor: "#00F0FF", // Cyan
+                accentColor: "#FFFF00", // Yellow
+                badge1: "MIDWEEK PEAK",
+                badge2: "STATUS: BALANCED",
+                outroTitle: "MIDWEEK WEDNESDAY",
+                outroDesc: "一週間の折り返し地点。バランスを保ちながらスマートに突破しよう。",
+                synthPreset: "smooth"
+            },
+            {
+                index: 4,
+                en: "THURSDAY",
+                jp: "木曜日",
+                short: "THU",
+                primaryColor: "#9D00FF", // Purple
+                secondaryColor: "#00F0FF", // Cyan
+                accentColor: "#FF007F", // Pink
+                badge1: "HORIZON IN SIGHT",
+                badge2: "STATUS: FOCUSED",
+                outroTitle: "PRODUCTIVE THURSDAY",
+                outroDesc: "週末まであと一息。集中力を高めて成果を最大化する日。",
+                synthPreset: "cyber"
+            },
+            {
+                index: 5,
+                en: "FRIDAY",
+                jp: "金曜日",
+                short: "FRI",
+                primaryColor: "#00F0FF", // Cyan
+                secondaryColor: "#FFD700", // Gold
+                accentColor: "#FF007F", // Pink
+                badge1: "WEEKEND APPROACHING",
+                badge2: "STATUS: PRIME",
+                outroTitle: "HAPPY FRIDAY",
+                outroDesc: "今日も素晴らしい一日になりますように。素晴らしい週末をお迎えください。",
+                synthPreset: "epic"
+            },
+            {
+                index: 6,
+                en: "SATURDAY",
+                jp: "土曜日",
+                short: "SAT",
+                primaryColor: "#FFD700", // Gold
+                secondaryColor: "#FF007F", // Pink
+                accentColor: "#00F0FF", // Cyan
+                badge1: "FREEDOM MODE",
+                badge2: "STATUS: CELEBRATION",
+                outroTitle: "GLORIOUS SATURDAY",
+                outroDesc: "自由な時間を存分に楽しんで、心からリラックスする休日。",
+                synthPreset: "groovy"
+            }
+        ];
+
+        class CyberSynth {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.isPlaying = false;
+                this.timerId = null;
+                this.step = 0;
+                this.preset = 'epic';
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                this.masterGain.connect(this.ctx.destination);
+            }
+
+            setPreset(presetName) {
+                this.preset = presetName;
+            }
+
+            start() {
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                this.isPlaying = true;
+                this.step = 0;
+                
+                let interval = 312.5; // default 120bpm
+                if (this.preset === 'chill') interval = 400;
+                if (this.preset === 'energetic') interval = 280;
+                if (this.preset === 'groovy') interval = 300;
+
+                this.timerId = setInterval(() => this.onTick(), interval);
+            }
+
+            stop() {
+                this.isPlaying = false;
+                if (this.timerId) {
+                    clearInterval(this.timerId);
+                    this.timerId = null;
+                }
+            }
+
+            playTone(freq, type, duration, gainVal = 0.1, detune = 0) {
+                if (!this.isPlaying || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                osc.detune.setValueAtTime(detune, this.ctx.currentTime);
+
+                gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            playKick() {
+                if (!this.isPlaying || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                let startFreq = 150;
+                if (this.preset === 'chill') startFreq = 120;
+                if (this.preset === 'energetic') startFreq = 180;
+
+                osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.15);
+
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playHiHat() {
+                if (!this.isPlaying || !this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * 0.05;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 7000;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+
+                noise.start();
+            }
+
+            onTick() {
+                if (!this.isPlaying) return;
+
+                // Chord progressions based on preset
+                let chordRoots = [146.83, 116.54, 130.81, 130.81]; // Dm, Bb, F, C
+                if (this.preset === 'chill') chordRoots = [130.81, 164.81, 196.00, 220.00];
+                if (this.preset === 'energetic') chordRoots = [220.00, 196.00, 174.61, 164.81];
+                if (this.preset === 'groovy') chordRoots = [174.61, 220.00, 130.81, 196.00];
+
+                const bar = Math.floor(this.step / 8) % 4;
+                const beatInBar = this.step % 8;
+
+                if (beatInBar === 0 || beatInBar === 4) {
+                    const baseF = chordRoots[bar];
+                    [baseF, baseF * 1.25, baseF * 1.5].forEach((freq, idx) => {
+                        this.playTone(freq, this.preset === 'chill' ? 'sine' : 'sawtooth', 1.2, 0.05, idx * 2);
+                    });
+                }
+
+                if (beatInBar === 0 || beatInBar === 4 || (this.preset === 'energetic' && beatInBar === 6)) {
+                    this.playKick();
+                }
+
+                if (beatInBar % 2 === 0 || beatInBar % 2 === 1) {
+                    this.playHiHat();
+                }
+
+                const arpNotes = [587.33, 698.46, 880.00, 1046.50, 880.00, 698.46, 783.99, 659.25];
+                const arpFreq = arpNotes[this.step % arpNotes.length];
+                this.playTone(arpFreq, this.preset === 'chill' ? 'triangle' : 'sine', 0.2, 0.06);
+
+                this.step++;
+            }
+        }
+
+        class ParticleSystem {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.particles = [];
+                this.color = '#00F0FF';
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.initParticles();
+            }
+
+            resize() {
+                this.width = this.canvas.width = window.innerWidth;
+                this.height = this.canvas.height = window.innerHeight;
+            }
+
+            setThemeColor(colorHex) {
+                this.color = colorHex;
+            }
+
+            initParticles() {
+                this.particles = [];
+                const count = Math.floor((this.width * this.height) / 14000);
+                for (let i = 0; i < count; i++) {
+                    this.particles.push({
+                        x: Math.random() * this.width,
+                        y: Math.random() * this.height,
+                        vx: (Math.random() - 0.5) * 0.6,
+                        vy: (Math.random() - 0.5) * 0.6,
+                        size: Math.random() * 2.2 + 1,
+                        alpha: Math.random() * 0.7 + 0.2
+                    });
+                }
+            }
+
+            updateAndDraw() {
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                this.ctx.fillStyle = this.color;
+
+                for (let p of this.particles) {
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    if (p.x < 0) p.x = this.width;
+                    if (p.x > this.width) p.x = 0;
+                    if (p.y < 0) p.y = this.height;
+                    if (p.y > this.height) p.y = 0;
+
+                    this.ctx.globalAlpha = p.alpha;
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+
+                // Connecting grid lines with matching theme color opacity
+                this.ctx.strokeStyle = this.color;
+                this.ctx.lineWidth = 0.8;
+                for (let i = 0; i < this.particles.length; i += 6) {
+                    for (let j = i + 1; j < i + 4 && j < this.particles.length; j++) {
+                        let dx = this.particles[i].x - this.particles[j].x;
+                        let dy = this.particles[i].y - this.particles[j].y;
+                        let dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 110) {
+                            this.ctx.globalAlpha = (1 - dist / 110) * 0.15;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(this.particles[i].x, this.particles[i].y);
+                            this.ctx.lineTo(this.particles[j].x, this.particles[j].y);
+                            this.ctx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('bgCanvas');
+            const particleSystem = new ParticleSystem(canvas);
+            const synth = new CyberSynth();
+
+            let animationFrameId;
+            let startTime = null;
+            const TOTAL_DURATION = 30; // 30 seconds
+
+            // Determine today's actual day index (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+            const todayDate = new Date();
+            const actualDayIndex = todayDate.getDay();
+            let selectedDayIndex = actualDayIndex;
+
+            // DOM Elements
+            const startOverlay = document.getElementById('startOverlay');
+            const mainContainer = document.getElementById('mainContainer');
+            const startBtn = document.getElementById('startBtn');
+            const replayBtn = document.getElementById('replayBtn');
+            const backToMenuBtn = document.getElementById('backToMenuBtn');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+            const timeCounter = document.getElementById('timeCounter');
+            const audioStatus = document.getElementById('audioStatus');
+            const detectedDayInfo = document.getElementById('detectedDayInfo');
+            const daySelectorBtns = document.getElementById('daySelectorBtns');
+            const glowOrb = document.getElementById('glowOrb');
+
+            // Scene elements
+            const scene1 = document.getElementById('scene1');
+            const scene2 = document.getElementById('scene2');
+            const scene3 = document.getElementById('scene3');
+            const scene4 = document.getElementById('scene4');
+
+            // Date formatting string for today
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDateStr = todayDate.toLocaleDateString('en-US', options).toUpperCase();
+
+            document.getElementById('dateText').textContent = formattedDateStr;
+            document.getElementById('systemStatus').textContent = `SYS.ONLINE // REAL-TIME SYNC`;
+            detectedDayInfo.textContent = `本日の自動検出: ${DAY_THEMES[actualDayIndex].jp} (${DAY_THEMES[actualDayIndex].en})`;
+
+            // Build Day Selector Buttons
+            DAY_THEMES.forEach((theme) => {
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all border cursor-pointer ${theme.index === selectedDayIndex ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.4)]' : 'bg-cyber-surface border-gray-700 text-gray-400 hover:border-gray-500'}`;
+                btn.innerHTML = `${theme.short} <span class="text-[10px] opacity-70">(${theme.jp})</span>`;
+                btn.addEventListener('click', () => {
+                    selectedDayIndex = theme.index;
+                    updateThemeUI();
+                    // Update active button styles
+                    Array.from(daySelectorBtns.children).forEach((child, idx) => {
+                        if (idx === selectedDayIndex) {
+                            child.className = "px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all border bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.4)] cursor-pointer";
+                        } else {
+                            child.className = "px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all border bg-cyber-surface border-gray-700 text-gray-400 hover:border-gray-500 cursor-pointer";
+                        }
+                    });
+                });
+                daySelectorBtns.appendChild(btn);
+            });
+
+            function updateThemeUI() {
+                const theme = DAY_THEMES[selectedDayIndex];
+                particleSystem.setThemeColor(theme.primaryColor);
+                synth.setPreset(theme.synthPreset);
+
+                // Update UI text & colors dynamically
+                document.getElementById('dayEnText').textContent = theme.en;
+                document.getElementById('dayJpText').textContent = theme.jp;
+                document.getElementById('dayJpText').style.color = theme.secondaryColor;
+                
+                document.getElementById('dayBadge1').textContent = theme.badge1;
+                document.getElementById('dayBadge1').style.color = theme.primaryColor;
+                document.getElementById('dayBadge1').style.borderColor = `${theme.primaryColor}66`;
+                document.getElementById('dayBadge1').style.backgroundColor = `${theme.primaryColor}1a`;
+
+                document.getElementById('dayBadge2').textContent = theme.badge2;
+                document.getElementById('dayBadge2').style.color = theme.secondaryColor;
+                document.getElementById('dayBadge2').style.borderColor = `${theme.secondaryColor}66`;
+                document.getElementById('dayBadge2').style.backgroundColor = `${theme.secondaryColor}1a`;
+
+                document.getElementById('outroTitle').textContent = theme.outroTitle;
+                document.getElementById('outroDesc').textContent = theme.outroDesc;
+                document.getElementById('outroFooter').style.color = theme.secondaryColor;
+
+                document.getElementById('scene1Sub').style.color = theme.accentColor;
+                document.getElementById('scene2Title').style.color = theme.secondaryColor;
+                document.getElementById('revealSubtitle').style.color = theme.primaryColor;
+
+                glowOrb.style.background = `linear-gradient(to right, ${theme.primaryColor}, ${theme.secondaryColor}, ${theme.accentColor})`;
+            }
+
+            updateThemeUI();
+
+            function renderLoop() {
+                particleSystem.updateAndDraw();
+                animationFrameId = requestAnimationFrame(renderLoop);
+            }
+            renderLoop();
+
+            startBtn.addEventListener('click', () => {
+                startOverlay.classList.add('opacity-0');
+                setTimeout(() => {
+                    startOverlay.style.display = 'none';
+                    mainContainer.classList.remove('opacity-0');
+                    mainContainer.classList.remove('pointer-events-none');
+                    startMotionSequence();
+                }, 700);
+            });
+
+            replayBtn.addEventListener('click', () => {
+                replayBtn.classList.add('hidden');
+                startMotionSequence();
+            });
+
+            backToMenuBtn.addEventListener('click', () => {
+                synth.stop();
+                mainContainer.classList.add('opacity-0');
+                mainContainer.classList.add('pointer-events-none');
+                startOverlay.style.display = 'flex';
+                setTimeout(() => {
+                    startOverlay.classList.remove('opacity-0');
+                }, 50);
+            });
+
+            function startMotionSequence() {
+                synth.start();
+                audioStatus.textContent = "AUDIO: PLAYING";
+                startTime = performance.now();
+                requestAnimationFrame(updateTimeline);
+            }
+
+            function updateTimeline(currentTime) {
+                if (!startTime) return;
+                const elapsedSec = (currentTime - startTime) / 1000;
+                const progress = Math.min(elapsedSec / TOTAL_DURATION, 1);
+
+                const percent = Math.floor(progress * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+
+                const currentSecFormatted = Math.floor(elapsedSec).toString().padStart(2, '0');
+                timeCounter.textContent = `00:${currentSecFormatted} / 00:30`;
+
+                // Scene choreography (0-30s)
+                if (elapsedSec >= 0 && elapsedSec < 7) {
+                    scene1.style.opacity = '1';
+                    scene1.style.transform = 'scale(1)';
+                } else if (elapsedSec >= 7 && elapsedSec < 14) {
+                    scene1.style.opacity = '0';
+                    scene1.style.transform = 'scale(1.05)';
+                    scene2.style.opacity = '1';
+                    scene2.style.transform = 'scale(1)';
+                } else if (elapsedSec >= 14 && elapsedSec < 24) {
+                    scene2.style.opacity = '0';
+                    scene2.style.transform = 'scale(0.95)';
+                    scene3.style.opacity = '1';
+                    scene3.style.transform = 'scale(1)';
+                } else if (elapsedSec >= 24 && elapsedSec <= 30) {
+                    scene3.style.opacity = '0';
+                    scene3.style.transform = 'scale(1.05)';
+                    scene4.style.opacity = '1';
+                    scene4.style.transform = 'scale(1)';
+                }
+
+                if (elapsedSec < TOTAL_DURATION) {
+                    requestAnimationFrame(updateTimeline);
+                } else {
+                    synth.stop();
+                    audioStatus.textContent = "AUDIO: COMPLETED";
+                    replayBtn.classList.remove('hidden');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
